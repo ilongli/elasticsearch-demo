@@ -6,9 +6,12 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.text.Text;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.functionscore.FunctionScoreQueryBuilder;
+import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
@@ -51,7 +54,6 @@ public class DSLTests {
 
     @Test
     void analyseResponse(SearchResponse response) {
-
         // 4.解析结果
         SearchHits searchHits = response.getHits();
         // 4.1 查询的总条数
@@ -68,12 +70,14 @@ public class DSLTests {
             Map<String, HighlightField> highlightFields = hit.getHighlightFields();
             // 根据字段名获取高亮结果
             HighlightField highlightField = highlightFields.get("address");
-            if (Objects.nonNull(highlightField) || highlightField.getFragments().length > 0) {
-                // 获取高亮值
-                String address = highlightField.getFragments()[0].string();
-                System.out.println("高亮：" + address);
+            if (Objects.nonNull(highlightField)) {
+                Text[] fragments = highlightField.getFragments();
+                if (Objects.nonNull(fragments) && fragments.length > 0) {
+                    // 获取高亮值
+                    String address = fragments[0].string();
+                    System.out.println("高亮：" + address);
+                }
             }
-
         }
     }
 
@@ -131,7 +135,7 @@ public class DSLTests {
 
 
     @Test
-    void tesHighlight() throws IOException {
+    void testHighlight() throws IOException {
         // 1.准备Request
         SearchRequest request = new SearchRequest("testclient");
         // 2.组织DSL参数
@@ -145,6 +149,30 @@ public class DSLTests {
                         .field("address")
                         .requireFieldMatch(false)
                 );
+
+        // 3.发送请求，得到相应结果
+        SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+
+        analyseResponse(response);
+    }
+
+    @Test
+    void testFunctionScore() throws IOException {
+
+        // 1.准备Request
+        SearchRequest request = new SearchRequest("testclient");
+        // 2.组织DSL参数
+        FunctionScoreQueryBuilder functionScoreQueryBuilder =
+                QueryBuilders.functionScoreQuery(
+                        QueryBuilders.matchQuery("address", "下北泽"),
+                        new FunctionScoreQueryBuilder.FilterFunctionBuilder[] {
+                            new FunctionScoreQueryBuilder.FilterFunctionBuilder(
+                                    QueryBuilders.termQuery("name", "rose"),
+                                    ScoreFunctionBuilders.weightFactorFunction(5)
+                            )
+                        }
+                );
+        request.source().query(functionScoreQueryBuilder);
 
         // 3.发送请求，得到相应结果
         SearchResponse response = client.search(request, RequestOptions.DEFAULT);
